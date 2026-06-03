@@ -1,0 +1,24 @@
+# Compiled files
+*.class
+out/
+bin/
+build/
+
+# IDEA files
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Logs (my result files)
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*~
