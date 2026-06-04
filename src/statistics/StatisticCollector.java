@@ -42,6 +42,5 @@ public class StatisticCollector {
         }
 
         return new AggregatedStatistic(currentTotalProcessed, currentTotalFailed, currentEventsByType);
-    }
-
+    } 
 }
