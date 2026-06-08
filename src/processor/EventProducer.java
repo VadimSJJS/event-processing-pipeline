@@ -15,6 +15,7 @@ public class EventProducer implements Runnable {
         this.eventCount = eventCount;
     }
 
+    @Override
     public void run() {
         for (int i = 0; i < eventCount; i++) {
             Event event = generateRandomEvent();
@@ -22,14 +23,15 @@ public class EventProducer implements Runnable {
         }
     }
 
-    public Event generateRandomEvent() {
+    private Event generateRandomEvent() {
         EventType eventType = EventType.values()[ThreadLocalRandom.current().nextInt(EventType.values().length)];
-        String[] sources = new String[] {"web", "mobile", "backend"};
+        String[] sources = {"web", "mobile", "backend"};
         String source = sources[ThreadLocalRandom.current().nextInt(sources.length)];
-        Map<String, String> payload = Map.of("key" + ThreadLocalRandom.current().nextInt(1, 10), "value" + ThreadLocalRandom.current().nextInt(1, 10));
-        int priority = ThreadLocalRandom.current().nextInt(1, 10);
-        Event event = new Event(eventType, source, payload, priority);
-
-        return event;
+        Map<String, String> payload = Map.of(
+                "key" + ThreadLocalRandom.current().nextInt(1, 10),
+                "value" + ThreadLocalRandom.current().nextInt(1, 10)
+        );
+        int priority = ThreadLocalRandom.current().nextInt(1, 11);
+        return new Event(eventType, source, payload, priority);
     }
 }
