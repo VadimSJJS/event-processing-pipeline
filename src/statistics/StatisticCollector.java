@@ -17,30 +17,43 @@ public class StatisticCollector {
 
     public void recordSuccess(Event event) {
         totalProcessed.incrementAndGet();
-
-        EventType eventType = event.getType();
-        eventsByType.computeIfAbsent(eventType, e -> new AtomicLong(0)).incrementAndGet();
+        incrementTypeCounter(event.getType());
+        incrementSourceCounter(event.getSource());
     }
 
     public void recordFailure(Event event) {
         totalFailed.incrementAndGet();
+        incrementTypeCounter(event.getType());
+        incrementSourceCounter(event.getSource());
+    }
 
-        EventType eventType = event.getType();
-        eventsByType.computeIfAbsent(eventType, e -> new AtomicLong(0)).incrementAndGet();
+    private void incrementTypeCounter(EventType eventType) {
+        eventsByType.computeIfAbsent(eventType, key -> new AtomicLong(0)).incrementAndGet();
+    }
+
+    private void incrementSourceCounter(String source) {
+        eventsBySource.computeIfAbsent(source, key -> new AtomicInteger(0)).incrementAndGet();
     }
 
     public AggregatedStatistic getSnapshot() {
         long currentTotalProcessed = totalProcessed.get();
         long currentTotalFailed = totalFailed.get();
         Map<EventType, Long> currentEventsByType = new HashMap<>();
+        Map<String, Integer> currentEventsBySource = new HashMap<>();
 
         for (Map.Entry<EventType, AtomicLong> entry : eventsByType.entrySet()) {
-            EventType key = entry.getKey();
-            Long value = entry.getValue().get();
-
-            currentEventsByType.put(key, value);
+            currentEventsByType.put(entry.getKey(), entry.getValue().get());
         }
 
-        return new AggregatedStatistic(currentTotalProcessed, currentTotalFailed, currentEventsByType);
-    } 
+        for (Map.Entry<String, AtomicInteger> entry : eventsBySource.entrySet()) {
+            currentEventsBySource.put(entry.getKey(), entry.getValue().get());
+        }
+
+        return new AggregatedStatistic(
+                currentTotalProcessed,
+                currentTotalFailed,
+                currentEventsByType,
+                currentEventsBySource
+        );
+    }
 }

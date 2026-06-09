@@ -32,6 +32,15 @@ public class EventProducer implements Runnable {
                 "value" + ThreadLocalRandom.current().nextInt(1, 10)
         );
         int priority = ThreadLocalRandom.current().nextInt(1, 11);
+
+        int invalidRoll = ThreadLocalRandom.current().nextInt(100);
+        if (invalidRoll < 8) {
+            return new Event(eventType, source, Map.of(), priority);
+        }
+        if (invalidRoll < 12) {
+            return new Event(eventType, source, payload, ThreadLocalRandom.current().nextInt(11, 100));
+        }
+
         return new Event(eventType, source, payload, priority);
     }
 }

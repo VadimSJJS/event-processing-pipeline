@@ -1,70 +1,139 @@
 import io.FileEventLogger;
 import io.ReportGenerator;
+import processor.EventProducer;
 import processor.EventProcessor;
+import statistics.AggregatedStatistic;
 import statistics.StatisticCollector;
-import validation.ValidationUtils;
-import model.Event;
-import model.EventType;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class Main {
-    public static void main(String[] args) throws InterruptedException {
-//        Event event1 = new Event(123, EventType.LOG, "mobile", Map.of("USER_ID", "1, 2, 3"), 1);
-//        Event event2 = new Event(EventType.METRIC, "web", new HashMap<>(2, 2), 2);
-//        Event event3 = new Event(EventType.LOG, "desktop", Map.of("1", "2"), 5);
-//        Event event4 = new Event(EventType.LOG, "desktop", Map.of("1", "1"), 10);
+    private static final String LOGS_DIR = "logs";
+    private static final String REPORT_PATH = LOGS_DIR + "/report.txt";
+
+    public static void main(String[] args) throws InterruptedException, IOException {
+        int producerCount = 3;
+        int eventsPerProducer = 20;
+
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--threads":
+                case "-t":
+                    if (i + 1 < args.length) {
+                        try {
+                            producerCount = Integer.parseInt(args[++i]);
+                            if (producerCount <= 0) {
+                                System.err.println("Error: threads count must be positive. Using default: 3");
+                                producerCount = 3;
+                            }
+                        } catch (NumberFormatException e) {
+                            System.err.println("Error: invalid number for threads. Using default: 3");
+                        }
+                    } else {
+                        System.err.println("Error: --threads requires a value. Using default: 3");
+                    }
+                    break;
+
+                case "--eventsPerThread":
+                case "-e":
+                    if (i + 1 < args.length) {
+                        try {
+                            eventsPerProducer = Integer.parseInt(args[++i]);
+                            if (eventsPerProducer <= 0) {
+                                System.err.println("Error: eventsPerThread must be positive. Using default: 20");
+                                eventsPerProducer = 20;
+                            }
+                        } catch (NumberFormatException e) {
+                            System.err.println("Error: invalid number for eventsPerThread. Using default: 20");
+                        }
+                    } else {
+                        System.err.println("Error: --eventsPerThread requires a value. Using default: 20");
+                    }
+                    break;
+
+                case "--help":
+                case "-h":
+                    printHelp();
+                    return;
+
+                default:
+                    System.err.println("Unknown argument: " + args[i]);
+                    System.err.println("Use --help for usage information");
+                    return;
+            }
+        }
+
+        int totalExpectedEvents = producerCount * eventsPerProducer;
+
+        System.out.println("=== Configuration ===");
+        System.out.println("Producer threads: " + producerCount);
+        System.out.println("Events per producer: " + eventsPerProducer);
+        System.out.println("Total events to generate: " + totalExpectedEvents);
+        System.out.println();
+
+        Files.createDirectories(Path.of(LOGS_DIR));
+        resetLogFiles();
+
         StatisticCollector statisticCollector = new StatisticCollector();
+        FileEventLogger fileEventLogger = new FileEventLogger();
+        EventProcessor eventProcessor = new EventProcessor();
         ReportGenerator reportGenerator = new ReportGenerator();
 
-//        ValidationUtils.validate(event3);
-//        ValidationUtils.validate(event4);
-
-        FileEventLogger fileEventLogger = new FileEventLogger();
-
-//        fileEventLogger.logSuccess(event1);
-//        fileEventLogger.logSuccess(event2);
-
-//        fileEventLogger.logFailed(event3);
-//        fileEventLogger.logFailed(event4);
-
-        FileEventLogger eventLogger = new FileEventLogger();
-//        StatisticCollector statisticCollector = new StatisticCollector();
-        EventProcessor eventProcessor = new EventProcessor();
-
-        Thread thread = new Thread(() -> {
+        Thread consumerThread = new Thread(() -> {
             try {
-                eventProcessor.startProcessing(statisticCollector, eventLogger);
+                eventProcessor.startProcessing(statisticCollector, fileEventLogger);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                System.out.println("Thread interrupted");
             }
-        });
-        thread.start();
+        }, "event-consumer");
+        consumerThread.start();
 
-        Map<String, String> payload = new HashMap<>();
-        payload.put("test", "value");
+        Thread[] producerThreads = new Thread[producerCount];
+        for (int i = 0; i < producerCount; i++) {
+            producerThreads[i] = new Thread(
+                    new EventProducer(eventProcessor, eventsPerProducer),
+                    "event-producer-" + i
+            );
+            producerThreads[i].start();
+        }
 
-        Event event1 = new Event(EventType.LOG, "web", payload, 5);
-        Event event2 = new Event(EventType.METRIC, "backend", payload, 99);
-        Event event3 = new Event(EventType.USER_ACTION, "mobile", payload, 3);
+        for (Thread producerThread : producerThreads) {
+            producerThread.join();
+        }
 
-        eventProcessor.submitEvent(event1);
-        eventProcessor.submitEvent(event2);
-        eventProcessor.submitEvent(event3);
+        eventProcessor.requestShutdown();
+        consumerThread.join();
 
-        Thread.sleep(2000);
+        AggregatedStatistic snapshot = statisticCollector.getSnapshot();
 
-        thread.interrupt();
-        thread.join();
+        System.out.println("=== Processing Complete ===");
+        reportGenerator.printToConsole(snapshot, producerCount, totalExpectedEvents);
+        reportGenerator.generate(snapshot, REPORT_PATH);
 
-        System.out.println("Total processed: " + statisticCollector.getSnapshot().getTotalProcessed());
-        System.out.println("Total failed: " + statisticCollector.getSnapshot().getTotalFailed());
-        System.out.println("Events by type: " + statisticCollector.getSnapshot().getEventsByType());
+        System.out.println();
+        System.out.println("Report saved to: " + REPORT_PATH);
+        System.out.println("Event logs saved to: " + LOGS_DIR + "/success_events.log and " + LOGS_DIR + "/failed_events.log");
+    }
 
-        System.out.println("Проверка завершена. Смотри файлы в папке logs/");
+    private static void printHelp() {
+        System.out.println("=== Event Processing Pipeline ===");
+        System.out.println("Usage: java Main [options]");
+        System.out.println();
+        System.out.println("Options:");
+        System.out.println("  --threads, -t <N>           Number of producer threads (default: 3)");
+        System.out.println("  --eventsPerThread, -e <N>   Number of events per producer (default: 20)");
+        System.out.println("  --help, -h                  Show this help message");
+        System.out.println();
+        System.out.println("Example:");
+        System.out.println("  java Main -t 4 -e 100");
+        System.out.println("  java Main --threads 5 --eventsPerThread 50");
+    }
 
-
+    private static void resetLogFiles() throws IOException {
+        Files.deleteIfExists(Path.of(LOGS_DIR, "success_events.log"));
+        Files.deleteIfExists(Path.of(LOGS_DIR, "failed_events.log"));
+        Files.deleteIfExists(Path.of(REPORT_PATH));
     }
 }
